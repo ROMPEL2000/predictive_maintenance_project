@@ -49,7 +49,7 @@
 ## 🚀 Быстрый старт
 
 ```bash
-git clone https://github.com/ROMPEL2000/digital-department
+git clone https://github.com/ROMPEL2000/predictive_maintenance_project 
 cd predictive_maintenance_project
 pip install -r requirements.txt
 streamlit run app.py

@@ -1,98 +1,81 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, confusion_matrix, roc_auc_score
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.preprocessing import StandardScaler
 
 
 def analysis_and_model_page():
-    st.title("Бинарная классификация для предиктивного обслуживания")
+    st.title("Анализ и модель")
 
     uploaded_file = st.file_uploader("Загрузите CSV-файл", type="csv")
-    if not uploaded_file:
-        st.info(
-            "Ожидается загрузка файла с колонками: Type, Air temperature [K], Process temperature [K], Rotational speed [rpm], Torque [Nm], Tool wear [min], Machine failure")
-        return
+    if uploaded_file:
+        data = pd.read_csv(uploaded_file)
 
-    # Загрузка и предобработка
-    data = pd.read_csv(uploaded_file)
-    drop_cols = ['UDI', 'Product ID', 'TWF', 'HDF', 'PWF', 'OSF', 'RNF']
-    data = data.drop(columns=[c for c in drop_cols if c in data.columns])
-    data['Type'] = data['Type'].map({'L': 0, 'M': 1, 'H': 2})
+        # Предобработка
+        data = data.drop(columns=['UDI', 'Product ID', 'TWF', 'HDF', 'PWF', 'OSF', 'RNF'])
+        data['Type'] = data['Type'].map({'L': 0, 'M': 1, 'H': 2})
 
-    num_cols = ['Air temperature [K]', 'Process temperature [K]', 'Rotational speed [rpm]', 'Torque [Nm]',
-                'Tool wear [min]']
-    scaler = StandardScaler()
-    data[num_cols] = scaler.fit_transform(data[num_cols])
+        numerical_cols = ['Air temperature [K]', 'Process temperature [K]', 'Rotational speed [rpm]',
+                          'Torque [Nm]', 'Tool wear [min]']
 
-    # Разделение и обучение
-    X = data.drop(columns=['Machine failure'])
-    y = data['Machine failure']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+        scaler = StandardScaler()
+        data[numerical_cols] = scaler.fit_transform(data[numerical_cols])
 
-    model = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
-    model.fit(X_train, y_train)
+        X = data.drop(columns=['Machine failure'])
+        y = data['Machine failure']
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    # Оценка
-    y_pred = model.predict(X_test)
-    y_proba = model.predict_proba(X_test)[:, 1]
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X_train, y_train)
 
-    st.subheader("Результаты оценки модели")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Precision", f"{precision_score(y_test, y_pred):.3f}")
-    col2.metric("Recall", f"{recall_score(y_test, y_pred):.3f}")
-    col3.metric("F1-Score", f"{f1_score(y_test, y_pred):.3f}")
-    col4.metric("ROC-AUC", f"{roc_auc_score(y_test, y_proba):.3f}")
+        y_pred = model.predict(X_test)
+        y_proba = model.predict_proba(X_test)[:, 1]
 
-    # Матрица ошибок
-    fig, ax = plt.subplots(figsize=(5, 4))
-    sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Blues', ax=ax,
-                xticklabels=['Норма', 'Отказ'], yticklabels=['Норма', 'Отказ'])
-    ax.set_xlabel("Предсказано")
-    ax.set_ylabel("Реально")
-    st.pyplot(fig)
+        accuracy = accuracy_score(y_test, y_pred)
+        auc = roc_auc_score(y_test, y_proba)
 
-    # Важность признаков
-    fig, ax = plt.subplots(figsize=(6, 4))
-    imp = pd.DataFrame({'Признак': X.columns, 'Важность': model.feature_importances_}).sort_values('Важность')
-    ax.barh(imp['Признак'], imp['Важность'])
-    ax.set_xlabel("Важность")
-    st.pyplot(fig)
+        st.subheader("Результаты оценки модели")
+        st.write(f"**Accuracy:** {accuracy:.2f}")
+        st.write(f"**ROC-AUC:** {auc:.2f}")
 
-    # Форма для прогноза
-    st.subheader("Прогноз для нового оборудования")
-    with st.form("pred_form"):
-        cols = st.columns(3)
-        type_val = cols[0].selectbox("Тип", ['L', 'M', 'H'])
-        air_temp = cols[0].number_input("Температура воздуха [K]", value=300.0)
-        proc_temp = cols[1].number_input("Температура процесса [K]", value=310.0)
-        rot_speed = cols[1].number_input("Скорость вращения [rpm]", value=1500.0)
-        torque = cols[2].number_input("Крутящий момент [Nm]", value=40.0)
-        tool_wear = cols[2].number_input("Износ инструмента [min]", value=100.0)
-        submitted = st.form_submit_button("Сделать прогноз")
-
-    if submitted:
-        input_df = pd.DataFrame([{
-            'Type': {'L': 0, 'M': 1, 'H': 2}[type_val],
-            'Air temperature [K]': air_temp,
-            'Process temperature [K]': proc_temp,
-            'Rotational speed [rpm]': rot_speed,
-            'Torque [Nm]': torque,
-            'Tool wear [min]': tool_wear
-        }])
-        input_df[num_cols] = scaler.transform(input_df[num_cols])
-        pred = model.predict(input_df)[0]
-        proba = model.predict_proba(input_df)[0][1]
-
-        if pred == 1:
-            st.error(f"⚠️ ОТКАЗ ОБОРУДОВАНИЯ (вероятность: {proba:.2%})")
-        else:
-            st.success(f"✅ НОРМАЛЬНАЯ РАБОТА (вероятность отказа: {proba:.2%})")
+        fig, ax = plt.subplots()
+        sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt='d', cmap='Blues', ax=ax)
+        st.pyplot(fig)
 
 
-if __name__ == "__main__":
-    analysis_and_model_page()
+        st.subheader("Ввод данных для прогноза")
+        with st.form("input_form"):
+            input_type = st.selectbox("Тип (Type)", options=['L', 'M', 'H'])
+            air_temp = st.number_input("Температура воздуха [K]", value=300.0)
+            process_temp = st.number_input("Температура процесса [K]", value=310.0)
+            rotation_speed = st.number_input("Скорость вращения [rpm]", value=1500.0)
+            torque = st.number_input("Крутящий момент [Nm]", value=40.0)
+            tool_wear = st.number_input("Износ инструмента [min]", value=100.0)
+            submitted = st.form_submit_button("Сделать прогноз")
+
+        if submitted:
+            # Преобразование данных в DataFrame
+            input_dict = {
+                'Type': [input_type],
+                'Air temperature [K]': [air_temp],
+                'Process temperature [K]': [process_temp],
+                'Rotational speed [rpm]': [rotation_speed],
+                'Torque [Nm]': [torque],
+                'Tool wear [min]': [tool_wear],
+            }
+
+            input_df = pd.DataFrame(input_dict)
+            input_df['Type'] = input_df['Type'].map({'L': 0, 'M': 1, 'H': 2})
+
+            input_df[numerical_cols] = scaler.transform(input_df[numerical_cols])
+
+            prediction = model.predict(input_df)[0]
+            probability = model.predict_proba(input_df)[0][1]
+
+            st.markdown("### Результат предсказания:")
+            st.write("**Отказ оборудования**" if prediction == 1 else "**Оборудование работает нормально**")
+            st.write(f"**Вероятность отказа:** {probability:.2f}")
